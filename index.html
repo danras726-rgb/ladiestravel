@@ -1,993 +1,616 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  LayoutDashboard, Bus, Users, Wallet, Receipt, 
-  TrendingUp, TrendingDown, LogOut, Plus, 
-  FileText, Calendar, Filter, Search, Trash2,
-  Printer, ChevronRight, UserCircle, DollarSign,
-  Banknote, UserPlus, CheckCircle
-} from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, AreaChart, Area 
-} from 'recharts';
-
-// --- UTILITIES ---
-
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0
-  }).format(amount);
-};
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
-
-const formatDate = (dateString) => {
-  const options = { year: 'numeric', month: 'long', day: 'numeric' };
-  return new Date(dateString).toLocaleDateString('id-ID', options);
-};
-
-const getTodayDate = () => new Date().toISOString().split('T')[0];
-
-// --- INITIAL DATA SEEDING (MOCK DATA) ---
-const seedData = () => {
-  if (!localStorage.getItem('travel_users')) {
-    const users = [
-      { id: 'u1', name: 'Santi Aprofitasari', username: 'admin', password: '123', role: 'admin', active: true },
-      { id: 'u2', name: 'Siti Tiket', username: 'staff', password: '123', role: 'staff', active: true },
-    ];
-    localStorage.setItem('travel_users', JSON.stringify(users));
-  }
-
-  if (!localStorage.getItem('travel_vehicles')) {
-    const vehicles = [
-      { id: 'v1', plate: 'B 1234 XYZ', name: 'HiAce Commuter 01', type: 'Minibus', year: '2020', status: 'Aktif' },
-      { id: 'v2', plate: 'D 5678 ABC', name: 'Elf Long 02', type: 'Microbus', year: '2019', status: 'Servis' },
-    ];
-    localStorage.setItem('travel_vehicles', JSON.stringify(vehicles));
-  }
-};
-
-// --- COMPONENTS ---
-
-const Card = ({ title, value, subtext, icon: Icon, colorClass }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-start justify-between">
-    <div>
-      <p className="text-slate-500 text-sm font-medium mb-1">{title}</p>
-      <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-      {subtext && <p className={`text-xs mt-2 ${colorClass}`}>{subtext}</p>}
-    </div>
-    <div className={`p-3 rounded-lg ${colorClass} bg-opacity-10`}>
-      <Icon className={`w-6 h-6 ${colorClass.replace('text-', 'stroke-')}`} />
-    </div>
-  </div>
-);
-
-const Modal = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-xl font-bold text-slate-800">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <Plus className="w-6 h-6 rotate-45" />
-          </button>
-        </div>
-        <div className="p-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- MAIN APP COMPONENT ---
-
-export default function TravelApp() {
-  // --- STATE ---
-  const [user, setUser] = useState(null); // 'admin' | 'staff' | null
-  const [view, setView] = useState('dashboard'); // dashboard, vehicles, finance, reports, settings
-  const [users, setUsers] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  
-  // Login & Register State
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [authForm, setAuthForm] = useState({ name: '', username: '', password: '' });
-  const [authError, setAuthError] = useState('');
-  const [authSuccess, setAuthSuccess] = useState('');
-
-  // Modals
-  const [showVehicleModal, setShowVehicleModal] = useState(false);
-  const [showTransModal, setShowTransModal] = useState(false);
-  
-  // Forms
-  const [vehicleForm, setVehicleForm] = useState({});
-  const [transForm, setTransForm] = useState({
-    type: 'income_driver', // income_driver, income_ticket, expense, salary
-    date: getTodayDate(),
-    amount: '',
-    vehicleId: '',
-    description: '',
-    // Specific fields
-    driverName: '',
-    route: '',
-    passengerCount: 0,
-    paymentMethod: 'Cash',
-    expenseType: 'BBM',
-    salaryRecipient: '' // For salary type
-  });
-
-  // Filter State
-  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-  const [selectedVehicleFilter, setSelectedVehicleFilter] = useState('all');
-
-  // --- EFFECTS ---
-  useEffect(() => {
-    seedData();
-    const storedUser = localStorage.getItem('travel_currentUser');
-    if (storedUser) setUser(JSON.parse(storedUser));
-
-    setUsers(JSON.parse(localStorage.getItem('travel_users') || '[]'));
-    setVehicles(JSON.parse(localStorage.getItem('travel_vehicles') || '[]'));
-    setTransactions(JSON.parse(localStorage.getItem('travel_transactions') || '[]'));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('travel_vehicles', JSON.stringify(vehicles));
-    localStorage.setItem('travel_users', JSON.stringify(users));
-    localStorage.setItem('travel_transactions', JSON.stringify(transactions));
-  }, [vehicles, users, transactions]);
-
-  // --- ACTIONS ---
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    const foundUser = users.find(u => u.username === authForm.username && u.password === authForm.password && u.active);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('travel_currentUser', JSON.stringify(foundUser));
-      setAuthError('');
-      setView('dashboard');
-    } else {
-      setAuthError('Username atau password salah / akun nonaktif');
-    }
-  };
-
-  const handleRegister = (e) => {
-    e.preventDefault();
-    if (users.find(u => u.username === authForm.username)) {
-      setAuthError('Username sudah digunakan!');
-      return;
-    }
-
-    const newUser = {
-      id: generateId(),
-      name: authForm.name,
-      username: authForm.username,
-      password: authForm.password,
-      role: 'staff', // Default register as staff
-      active: true
-    };
-
-    setUsers([...users, newUser]);
-    setAuthSuccess('Registrasi berhasil! Silakan login.');
-    setIsRegistering(false);
-    setAuthForm({ name: '', username: '', password: '' });
-    setAuthError('');
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('travel_currentUser');
-    setAuthForm({ name: '', username: '', password: '' });
-  };
-
-  const saveVehicle = (e) => {
-    e.preventDefault();
-    if (vehicleForm.id) {
-      setVehicles(vehicles.map(v => v.id === vehicleForm.id ? vehicleForm : v));
-    } else {
-      setVehicles([...vehicles, { ...vehicleForm, id: generateId() }]);
-    }
-    setShowVehicleModal(false);
-  };
-
-  const saveTransaction = (e) => {
-    e.preventDefault();
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LadiesTravel Management System</title>
     
-    // Auto description for salary
-    let desc = transForm.description;
-    if (transForm.type === 'salary' && !desc) {
-      desc = `Gaji ${transForm.salaryRecipient}`;
-    }
+    <!-- Load React & ReactDOM (Versi Stabil 18.2.0) -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- Load Prop-types (Penting untuk mencegah error pada beberapa library UMD) -->
+    <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+    
+    <!-- Load Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Recharts (Versi Stabil 2.12.7 - Versi terbaru sering bermasalah di UMD) -->
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
 
-    const newTrans = {
-      ...transForm,
-      description: desc,
-      id: generateId(),
-      amount: parseFloat(transForm.amount),
-      passengerCount: parseInt(transForm.passengerCount || 0),
-      timestamp: new Date().toISOString()
-    };
-    setTransactions([newTrans, ...transactions]);
-    setShowTransModal(false);
-    // Reset form mostly
-    setTransForm({ ...transForm, amount: '', description: '', driverName: '', passengerCount: 0, salaryRecipient: '' });
-  };
+    <style>
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-  const deleteTransaction = (id) => {
-    if(confirm('Hapus transaksi ini?')) {
-      setTransactions(transactions.filter(t => t.id !== id));
-    }
-  }
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        // Pastikan Recharts terdefinisi sebelum destructuring
+        const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, Legend, ResponsiveContainer, AreaChart, Area } = window.Recharts || {};
 
-  // --- NEW: DELETE USER FUNCTION ---
-  const deleteUser = (id) => {
-    if (id === user.id) {
-      alert("Anda tidak dapat menghapus akun Anda sendiri saat sedang login.");
-      return;
-    }
-    if (confirm('Apakah Anda yakin ingin menghapus akun pegawai ini secara permanen?')) {
-      setUsers(users.filter(u => u.id !== id));
-    }
-  };
+        // --- ICONS (Inline SVG Components to replace Lucide imports) ---
+        const IconBase = ({ d, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+                {d}
+            </svg>
+        );
 
-  // --- CALCULATIONS & STATS ---
+        const Bus = (p) => <IconBase {...p} d={<><path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" /><path d="M18 21v-2" /><path d="M6 21v-2" /><rect width="22" height="16" x="1" y="5" rx="2" /></>} />;
+        const LayoutDashboard = (p) => <IconBase {...p} d={<><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>} />;
+        const Users = (p) => <IconBase {...p} d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>} />;
+        const Wallet = (p) => <IconBase {...p} d={<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>} />;
+        const Receipt = (p) => <IconBase {...p} d={<><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" /><path d="M12 17V7" /></>} />;
+        const TrendingUp = (p) => <IconBase {...p} d={<><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></>} />;
+        const TrendingDown = (p) => <IconBase {...p} d={<><polyline points="22 17 13.5 8.5 8.5 13.5 2 7" /><polyline points="16 17 22 17 22 11" /></>} />;
+        const LogOut = (p) => <IconBase {...p} d={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></>} />;
+        const Plus = (p) => <IconBase {...p} d={<><path d="M5 12h14" /><path d="M12 5v14" /></>} />;
+        const FileText = (p) => <IconBase {...p} d={<><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></>} />;
+        const Calendar = (p) => <IconBase {...p} d={<><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></>} />;
+        const Filter = (p) => <IconBase {...p} d={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></>} />;
+        const Search = (p) => <IconBase {...p} d={<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>} />;
+        const Trash2 = (p) => <IconBase {...p} d={<><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />;
+        const Printer = (p) => <IconBase {...p} d={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></>} />;
+        const ChevronRight = (p) => <IconBase {...p} d={<><path d="m9 18 6-6-6-6" /></>} />;
+        const UserCircle = (p) => <IconBase {...p} d={<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="10" r="3" /><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></>} />;
+        const CheckCircle = (p) => <IconBase {...p} d={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>} />;
+        const MapPin = (p) => <IconBase {...p} d={<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>} />;
+        const Fuel = (p) => <IconBase {...p} d={<><line x1="3" x2="15" y1="22" y2="22" /><line x1="4" x2="14" y1="9" y2="9" /><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18" /><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5" /></>} />;
+        const Package = (p) => <IconBase {...p} d={<><path d="m16.5 9.4-9-5.19" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" x2="12" y1="22.08" y2="12" /></>} />;
+        const X = (p) => <IconBase {...p} d={<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>} />;
+        const CreditCard = (p) => <IconBase {...p} d={<><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></>} />;
+        const User = (p) => <IconBase {...p} d={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>} />;
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      const dateMatch = (!dateFilter.start || t.date >= dateFilter.start) && 
-                        (!dateFilter.end || t.date <= dateFilter.end);
-      const vehicleMatch = selectedVehicleFilter === 'all' || t.vehicleId === selectedVehicleFilter;
-      return dateMatch && vehicleMatch;
-    });
-  }, [transactions, dateFilter, selectedVehicleFilter]);
+        // --- UTILITIES ---
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0
+            }).format(amount);
+        };
 
-  const stats = useMemo(() => {
-    let incomeDriver = 0;
-    let incomeTicket = 0;
-    let totalExpense = 0; // Operational + Salary
+        const generateId = () => Math.random().toString(36).substr(2, 9);
 
-    filteredTransactions.forEach(t => {
-      if (t.type === 'income_driver') incomeDriver += t.amount;
-      if (t.type === 'income_ticket') incomeTicket += t.amount;
-      if (t.type === 'expense' || t.type === 'salary') totalExpense += t.amount;
-    });
+        const formatDate = (dateString) => {
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date(dateString).toLocaleDateString('id-ID', options);
+        };
 
-    return {
-      incomeDriver,
-      incomeTicket,
-      totalIncome: incomeDriver + incomeTicket,
-      totalExpense,
-      netProfit: (incomeDriver + incomeTicket) - totalExpense
-    };
-  }, [filteredTransactions]);
+        const getTodayDate = () => new Date().toISOString().split('T')[0];
 
-  const chartData = useMemo(() => {
-    // Group by date (last 7 days or filtered range)
-    const dataMap = {};
-    filteredTransactions.forEach(t => {
-      if (!dataMap[t.date]) dataMap[t.date] = { date: t.date, income: 0, expense: 0 };
-      if (t.type.includes('income')) dataMap[t.date].income += t.amount;
-      if (t.type === 'expense' || t.type === 'salary') dataMap[t.date].expense += t.amount;
-    });
-    return Object.values(dataMap).sort((a, b) => new Date(a.date) - new Date(b.date));
-  }, [filteredTransactions]);
+        // --- DATA SEEDING ---
+        const seedData = () => {
+            if (!localStorage.getItem('travel_users')) {
+                const users = [
+                    { id: 'u1', name: 'Santi Aprofitasari', username: 'admin', password: '123', role: 'admin', active: true },
+                    { id: 'u2', name: 'Siti Tiket', username: 'staff', password: '123', role: 'staff', active: true },
+                ];
+                localStorage.setItem('travel_users', JSON.stringify(users));
+            }
 
+            if (!localStorage.getItem('travel_vehicles')) {
+                const vehicles = [
+                    { id: 'v1', plate: 'B 1234 XYZ', name: 'HiAce Commuter 01', type: 'Minibus', year: '2020', status: 'Aktif' },
+                    { id: 'v2', plate: 'D 5678 ABC', name: 'Elf Long 02', type: 'Microbus', year: '2019', status: 'Servis' },
+                ];
+                localStorage.setItem('travel_vehicles', JSON.stringify(vehicles));
+            }
+        };
 
-  // --- VIEWS ---
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
-          <div className="flex justify-center mb-6">
-            <div className="bg-blue-600 p-3 rounded-xl">
-              <Bus className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">
-            {isRegistering ? 'Daftar Pegawai Baru' : 'LadiesTravel Login'}
-          </h2>
-          <p className="text-center text-slate-500 mb-6">
-            {isRegistering ? 'Buat akun untuk akses sistem tiket' : 'Masuk untuk mengelola armada'}
-          </p>
-          
-          {authSuccess && (
-            <div className="bg-green-100 text-green-700 p-3 rounded-lg mb-4 text-sm flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" /> {authSuccess}
-            </div>
-          )}
-
-          <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
-            {isRegistering && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
-                <input 
-                  type="text" 
-                  required
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Nama Pegawai"
-                  value={authForm.name}
-                  onChange={e => setAuthForm({...authForm, name: e.target.value})}
-                />
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
-              <input 
-                type="text" 
-                required
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Username"
-                value={authForm.username}
-                onChange={e => setAuthForm({...authForm, username: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input 
-                type="password" 
-                required
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Password"
-                value={authForm.password}
-                onChange={e => setAuthForm({...authForm, password: e.target.value})}
-              />
-            </div>
-            
-            {authError && <p className="text-red-500 text-sm text-center">{authError}</p>}
-            
-            <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">
-              {isRegistering ? 'Daftar Sekarang' : 'Masuk'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center pt-4 border-t">
-            <button 
-              onClick={() => {
-                setIsRegistering(!isRegistering);
-                setAuthError('');
-                setAuthSuccess('');
-              }}
-              className="text-sm text-blue-600 hover:underline font-medium"
-            >
-              {isRegistering ? 'Sudah punya akun? Login' : 'Pegawai baru? Daftar Akun'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
-      
-      {/* SIDEBAR */}
-      <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-700">
-          <div className="bg-blue-500 p-2 rounded-lg">
-            <Bus className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl tracking-tight">LadiesTravel</span>
-        </div>
-
-        <nav className="p-4 space-y-2">
-          <button 
-            onClick={() => setView('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'dashboard' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span>Dashboard</span>
-          </button>
-
-          <button 
-            onClick={() => {
-              setView('finance');
-              setTransForm(prev => ({ ...prev, type: user.role === 'admin' ? 'income_driver' : 'income_ticket' }));
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'finance' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
-          >
-            <Wallet className="w-5 h-5" />
-            <span>Keuangan</span>
-          </button>
-
-          {user.role === 'admin' && (
-            <>
-              <button 
-                onClick={() => setView('vehicles')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'vehicles' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
-              >
-                <Bus className="w-5 h-5" />
-                <span>Armada Kendaraan</span>
-              </button>
-
-              <button 
-                onClick={() => setView('reports')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'reports' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
-              >
-                <FileText className="w-5 h-5" />
-                <span>Laporan Detail</span>
-              </button>
-
-              <button 
-                onClick={() => setView('staff')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'staff' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}
-              >
-                <Users className="w-5 h-5" />
-                <span>Pegawai</span>
-              </button>
-            </>
-          )}
-        </nav>
-
-        <div className="absolute bottom-0 w-full md:w-64 p-4 border-t border-slate-700 bg-slate-900">
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
-              <UserCircle className="w-5 h-5 text-slate-300" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">{user.name}</p>
-              <p className="text-xs text-slate-400 capitalize">{user.role}</p>
-            </div>
-          </div>
-          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:bg-slate-800 py-2 rounded-lg transition text-sm">
-            <LogOut className="w-4 h-4" /> Keluar
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8">
-        
-        {/* HEADER */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 capitalize">{view.replace('_', ' ')}</h1>
-            <p className="text-slate-500 text-sm">Selamat datang kembali, {user.name}</p>
-          </div>
-          
-          {/* Global Action Button */}
-          <div className="flex gap-2">
-            <button 
-              onClick={() => {
-                setTransForm({
-                  ...transForm,
-                  date: getTodayDate(),
-                  type: user.role === 'admin' ? 'income_driver' : 'income_ticket'
-                });
-                setShowTransModal(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Input Transaksi</span>
-            </button>
-          </div>
-        </header>
-
-        {/* --- VIEW: DASHBOARD --- */}
-        {view === 'dashboard' && (
-          <div className="space-y-6">
-            {/* Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card 
-                title="Pemasukan Supir" 
-                value={formatCurrency(stats.incomeDriver)} 
-                subtext="Total periode ini" 
-                icon={Bus} 
-                colorClass="text-green-600" 
-              />
-              <Card 
-                title="Penjualan Tiket" 
-                value={formatCurrency(stats.incomeTicket)} 
-                subtext="Total periode ini" 
-                icon={Receipt} 
-                colorClass="text-blue-600" 
-              />
-              {user.role === 'admin' && (
-                <>
-                  <Card 
-                    title="Total Pengeluaran" 
-                    value={formatCurrency(stats.totalExpense)} 
-                    subtext="Ops, Servis & Gaji" 
-                    icon={TrendingDown} 
-                    colorClass="text-red-500" 
-                  />
-                  <Card 
-                    title="Laba Bersih" 
-                    value={formatCurrency(stats.netProfit)} 
-                    subtext="Total Keuntungan" 
-                    icon={Wallet} 
-                    colorClass={stats.netProfit >= 0 ? "text-emerald-600" : "text-red-600"} 
-                  />
-                </>
-              )}
-            </div>
-
-            {/* Filters for Dashboard */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
-              <span className="text-sm font-bold text-slate-600 flex items-center gap-2">
-                <Filter className="w-4 h-4" /> Filter Data:
-              </span>
-              <input 
-                type="date" 
-                className="border p-2 rounded text-sm" 
-                value={dateFilter.start} 
-                onChange={(e) => setDateFilter({...dateFilter, start: e.target.value})}
-              />
-              <span className="text-slate-400">-</span>
-              <input 
-                type="date" 
-                className="border p-2 rounded text-sm" 
-                value={dateFilter.end} 
-                onChange={(e) => setDateFilter({...dateFilter, end: e.target.value})}
-              />
-              {user.role === 'admin' && (
-                <select 
-                  className="border p-2 rounded text-sm"
-                  value={selectedVehicleFilter}
-                  onChange={(e) => setSelectedVehicleFilter(e.target.value)}
-                >
-                  <option value="all">Semua Kendaraan</option>
-                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.name}</option>)}
-                </select>
-              )}
-              <button 
-                onClick={() => {setDateFilter({start:'', end:''}); setSelectedVehicleFilter('all');}}
-                className="text-sm text-blue-600 hover:underline ml-auto"
-              >
-                Reset Filter
-              </button>
-            </div>
-
-            {/* Charts */}
-            {user.role === 'admin' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                  <h3 className="font-bold text-lg mb-4 text-slate-700">Tren Pemasukan vs Pengeluaran</h3>
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="date" tickFormatter={d => new Date(d).getDate()} stroke="#94a3b8" fontSize={12} />
-                        <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={val => `${val/1000}k`} />
-                        <RechartsTooltip formatter={(value) => formatCurrency(value)} />
-                        <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#colorInc)" name="Pemasukan" strokeWidth={2} />
-                        <Area type="monotone" dataKey="expense" stroke="#ef4444" fillOpacity={1} fill="url(#colorExp)" name="Pengeluaran" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
+        // --- COMPONENTS ---
+        const Card = ({ title, value, subtext, icon: Icon, colorClass }) => (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-start justify-between">
+                <div>
+                    <p className="text-slate-500 text-sm font-medium mb-1">{title}</p>
+                    <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
+                    {subtext && <p className={`text-xs mt-2 ${colorClass}`}>{subtext}</p>}
                 </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                  <h3 className="font-bold text-lg mb-4 text-slate-700">Aktivitas Terkini</h3>
-                  <div className="space-y-4 max-h-72 overflow-y-auto pr-2">
-                    {transactions.slice(0, 6).map((t, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-lg transition border-b border-slate-50 last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-full ${t.type === 'expense' || t.type === 'salary' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                            {t.type === 'expense' || t.type === 'salary' ? <TrendingDown size={16}/> : <TrendingUp size={16}/>}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-700">
-                              {t.type === 'salary' ? 'Gaji Pegawai' : (t.type === 'expense' ? t.expenseType : (t.type === 'income_ticket' ? 'Tiket' : 'Setoran'))}
-                            </p>
-                            <p className="text-xs text-slate-400">{formatDate(t.date)}</p>
-                          </div>
-                        </div>
-                        <span className={`text-sm font-bold ${t.type === 'expense' || t.type === 'salary' ? 'text-red-600' : 'text-green-600'}`}>
-                          {t.type === 'expense' || t.type === 'salary' ? '-' : '+'}{formatCurrency(t.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                <div className={`p-3 rounded-lg ${colorClass} bg-opacity-10`}>
+                    <Icon className={`w-6 h-6 ${colorClass.replace('text-', 'stroke-')}`} />
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* --- VIEW: FINANCE (Table) --- */}
-        {(view === 'finance' || view === 'reports') && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-              <h3 className="font-bold text-lg">Data Transaksi</h3>
-              <div className="flex gap-2">
-                 <button onClick={() => window.print()} className="px-4 py-2 text-slate-600 border rounded-lg hover:bg-slate-50 text-sm flex items-center gap-2">
-                   <Printer className="w-4 h-4"/> Cetak / PDF
-                 </button>
-              </div>
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs">
-                  <tr>
-                    <th className="p-4">Tanggal</th>
-                    <th className="p-4">Tipe</th>
-                    <th className="p-4">Keterangan / Rute</th>
-                    <th className="p-4">Kendaraan</th>
-                    <th className="p-4 text-right">Jumlah</th>
-                    {user.role === 'admin' && <th className="p-4 text-center">Aksi</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredTransactions.length === 0 ? (
-                    <tr><td colSpan="6" className="p-8 text-center text-slate-400">Belum ada data transaksi</td></tr>
-                  ) : (
-                    filteredTransactions.map(t => {
-                      const vehicle = vehicles.find(v => v.id === t.vehicleId);
-                      return (
-                        <tr key={t.id} className="hover:bg-slate-50">
-                          <td className="p-4">{formatDate(t.date)}</td>
-                          <td className="p-4">
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${
-                              t.type === 'salary' ? 'bg-orange-100 text-orange-700' :
-                              t.type === 'expense' ? 'bg-red-100 text-red-700' : 
-                              t.type === 'income_ticket' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                            }`}>
-                              {t.type === 'salary' ? 'Gaji/Upah' : 
-                               (t.type === 'expense' ? 'Pengeluaran' : 
-                               (t.type === 'income_ticket' ? 'Tiket' : 'Setoran Supir'))}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <div className="font-medium text-slate-800">{t.description || t.route || '-'}</div>
-                            <div className="text-xs text-slate-400">
-                              {t.driverName && `Supir: ${t.driverName}`}
-                              {t.salaryRecipient && `Penerima: ${t.salaryRecipient}`}
+        );
+
+        const Modal = ({ isOpen, onClose, title, children, maxWidth = "max-w-2xl" }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 transition-all">
+                    <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[90vh] overflow-y-auto border border-slate-100`}>
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 sticky top-0 bg-white/95 backdrop-blur z-20">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+                                <p className="text-xs text-slate-400 mt-1">Lengkapi formulir di bawah ini</p>
                             </div>
-                          </td>
-                          <td className="p-4">
-                            {vehicle ? <span className="bg-slate-100 px-2 py-1 rounded text-xs">{vehicle.plate}</span> : '-'}
-                          </td>
-                          <td className={`p-4 text-right font-bold ${t.type === 'expense' || t.type === 'salary' ? 'text-red-600' : 'text-green-600'}`}>
-                            {t.type === 'expense' || t.type === 'salary' ? '-' : '+'}{formatCurrency(t.amount)}
-                          </td>
-                          {user.role === 'admin' && (
-                            <td className="p-4 text-center">
-                              <button onClick={() => deleteTransaction(t.id)} className="text-red-400 hover:text-red-600">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                            <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 bg-slate-50/50 min-h-[400px]">
+                            {children}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
 
-        {/* --- VIEW: VEHICLES --- */}
-        {view === 'vehicles' && user.role === 'admin' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <button 
-              onClick={() => { setVehicleForm({ status: 'Aktif' }); setShowVehicleModal(true); }}
-              className="bg-white border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 hover:border-blue-500 hover:text-blue-500 transition min-h-[200px]"
-            >
-              <Plus className="w-10 h-10 mb-2" />
-              <span className="font-bold">Tambah Kendaraan</span>
-            </button>
+        // --- MAIN APP COMPONENT ---
+        function TravelApp() {
+            const [user, setUser] = useState(null); 
+            const [view, setView] = useState('dashboard');
+            const [users, setUsers] = useState([]);
+            const [vehicles, setVehicles] = useState([]);
+            const [transactions, setTransactions] = useState([]);
             
-            {vehicles.map(v => {
-              // Calculate vehicle specific stats
-              const vTrans = transactions.filter(t => t.vehicleId === v.id);
-              const vIncome = vTrans.filter(t => t.type !== 'expense').reduce((acc, c) => acc + c.amount, 0);
-              const vExpense = vTrans.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
-              
-              return (
-                <div key={v.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition">
-                  <div className="p-5 border-b flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-lg text-slate-800">{v.plate}</h3>
-                      <p className="text-slate-500 text-sm">{v.name}</p>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${v.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {v.status}
-                    </span>
-                  </div>
-                  <div className="p-5 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-slate-400 text-xs">Pemasukan</p>
-                      <p className="font-bold text-green-600">{formatCurrency(vIncome)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 text-xs">Pengeluaran</p>
-                      <p className="font-bold text-red-600">{formatCurrency(vExpense)}</p>
-                    </div>
-                    <div className="col-span-2 pt-2 border-t">
-                      <p className="text-slate-400 text-xs">Laba Bersih</p>
-                      <p className="font-bold text-slate-800">{formatCurrency(vIncome - vExpense)}</p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 p-3 flex justify-end gap-2">
-                    <button 
-                      onClick={() => { setVehicleForm(v); setShowVehicleModal(true); }}
-                      className="px-3 py-1 bg-white border rounded text-xs font-medium hover:bg-slate-100"
-                    >
-                      Edit
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setDateFilter({start:'', end:''});
-                        setSelectedVehicleFilter(v.id);
-                        setView('reports');
-                      }}
-                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
-                    >
-                      Lihat Laporan
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+            // Login & Register State
+            const [isRegistering, setIsRegistering] = useState(false);
+            const [authForm, setAuthForm] = useState({ name: '', username: '', password: '' });
+            const [authError, setAuthError] = useState('');
+            const [authSuccess, setAuthSuccess] = useState('');
 
-         {/* --- VIEW: STAFF (Only Admin can see this detail list) --- */}
-         {view === 'staff' && user.role === 'admin' && (
-           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-             <div className="p-6 border-b">
-               <h3 className="font-bold text-lg">Daftar Pegawai Tiket</h3>
-             </div>
-             <table className="w-full text-left text-sm text-slate-600">
-               <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs">
-                 <tr>
-                   <th className="p-4">Nama</th>
-                   <th className="p-4">Username</th>
-                   <th className="p-4">Role</th>
-                   <th className="p-4 text-right">Status</th>
-                   <th className="p-4 text-center">Aksi</th>
-                 </tr>
-               </thead>
-               <tbody>
-                 {users.map(u => (
-                   <tr key={u.id} className="border-b last:border-0 hover:bg-slate-50">
-                     <td className="p-4 font-bold">{u.name}</td>
-                     <td className="p-4 text-slate-500">{u.username}</td>
-                     <td className="p-4 capitalize">{u.role}</td>
-                     <td className="p-4 text-right">
-                       <span className={`px-2 py-1 rounded text-xs font-bold ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                         {u.active ? 'Aktif' : 'Non-Aktif'}
-                       </span>
-                     </td>
-                     <td className="p-4 text-center">
-                       {u.id !== user.id && (
-                         <button 
-                           onClick={() => deleteUser(u.id)} 
-                           className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition"
-                           title="Hapus Akun"
-                         >
-                           <Trash2 className="w-4 h-4" />
-                         </button>
-                       )}
-                     </td>
-                   </tr>
-                 ))}
-               </tbody>
-             </table>
-           </div>
-         )}
-
-      </main>
-
-      {/* --- MODALS --- */}
-
-      {/* Vehicle Modal */}
-      <Modal 
-        isOpen={showVehicleModal} 
-        onClose={() => setShowVehicleModal(false)}
-        title={vehicleForm.id ? "Edit Kendaraan" : "Tambah Kendaraan"}
-      >
-        <form onSubmit={saveVehicle} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-text">Nomor Polisi</label>
-              <input required className="input-field" value={vehicleForm.plate || ''} onChange={e => setVehicleForm({...vehicleForm, plate: e.target.value})} />
-            </div>
-            <div>
-              <label className="label-text">Tahun</label>
-              <input type="number" className="input-field" value={vehicleForm.year || ''} onChange={e => setVehicleForm({...vehicleForm, year: e.target.value})} />
-            </div>
-          </div>
-          <div>
-            <label className="label-text">Nama / Unit</label>
-            <input required className="input-field" placeholder="Misal: HiAce 01" value={vehicleForm.name || ''} onChange={e => setVehicleForm({...vehicleForm, name: e.target.value})} />
-          </div>
-          <div>
-            <label className="label-text">Tipe Kendaraan</label>
-            <input className="input-field" placeholder="Minibus / Elf" value={vehicleForm.type || ''} onChange={e => setVehicleForm({...vehicleForm, type: e.target.value})} />
-          </div>
-          <div>
-            <label className="label-text">Status</label>
-            <select className="input-field" value={vehicleForm.status || 'Aktif'} onChange={e => setVehicleForm({...vehicleForm, status: e.target.value})}>
-              <option value="Aktif">Aktif</option>
-              <option value="Servis">Servis</option>
-              <option value="Rusak">Rusak</option>
-            </select>
-          </div>
-          <button type="submit" className="btn-primary w-full">Simpan Kendaraan</button>
-        </form>
-      </Modal>
-
-      {/* Transaction Modal */}
-      <Modal
-        isOpen={showTransModal}
-        onClose={() => setShowTransModal(false)}
-        title="Input Data Baru"
-      >
-        <form onSubmit={saveTransaction} className="space-y-4">
-          {/* Transaction Type Selector Tabs */}
-          <div className="flex bg-slate-100 p-1 rounded-lg mb-4 flex-wrap gap-1">
-            {user.role === 'admin' && (
-              <>
-                <button type="button" onClick={() => setTransForm({...transForm, type: 'income_driver'})} className={`flex-1 text-sm py-2 px-1 rounded-md transition ${transForm.type === 'income_driver' ? 'bg-white shadow text-blue-600 font-bold' : 'text-slate-500'}`}>Setoran</button>
-                <button type="button" onClick={() => setTransForm({...transForm, type: 'expense'})} className={`flex-1 text-sm py-2 px-1 rounded-md transition ${transForm.type === 'expense' ? 'bg-white shadow text-red-600 font-bold' : 'text-slate-500'}`}>Keluar</button>
-                <button type="button" onClick={() => setTransForm({...transForm, type: 'salary'})} className={`flex-1 text-sm py-2 px-1 rounded-md transition ${transForm.type === 'salary' ? 'bg-white shadow text-orange-600 font-bold' : 'text-slate-500'}`}>Gaji</button>
-              </>
-            )}
-            <button type="button" onClick={() => setTransForm({...transForm, type: 'income_ticket'})} className={`flex-1 text-sm py-2 px-1 rounded-md transition ${transForm.type === 'income_ticket' ? 'bg-white shadow text-emerald-600 font-bold' : 'text-slate-500'}`}>Tiket</button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-text">Tanggal</label>
-              <input required type="date" className="input-field" value={transForm.date} onChange={e => setTransForm({...transForm, date: e.target.value})} />
-            </div>
+            // Modals
+            const [showVehicleModal, setShowVehicleModal] = useState(false);
+            const [showTransModal, setShowTransModal] = useState(false);
             
-            {(transForm.type === 'income_driver' || transForm.type === 'expense') && (
-              <div>
-                <label className="label-text">Pilih Kendaraan</label>
-                <select required className="input-field" value={transForm.vehicleId} onChange={e => setTransForm({...transForm, vehicleId: e.target.value})}>
-                  <option value="">-- Pilih --</option>
-                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
-                </select>
-              </div>
-            )}
-          </div>
+            // Forms
+            const [vehicleForm, setVehicleForm] = useState({});
+            const [transForm, setTransForm] = useState({
+                type: 'income_driver', 
+                date: getTodayDate(),
+                amount: 0, 
+                vehicleId: '',
+                description: '',
+                driverName: '',
+                origin: '',        
+                destination: '',   
+                incomeItems: [], 
+                costBBM: 0,
+                costTol: 0,
+                costDriver: 0,     
+                paymentMethod: 'Cash',
+                expenseType: 'BBM', 
+                salaryRecipient: '',
+                route: '' 
+            });
 
-          {/* DYNAMIC FIELDS BASED ON TYPE */}
-          
-          {transForm.type === 'income_driver' && (
-            <>
-              <div>
-                <label className="label-text">Nama Supir</label>
-                <input required className="input-field" value={transForm.driverName} onChange={e => setTransForm({...transForm, driverName: e.target.value})} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                   <label className="label-text">Jumlah Penumpang</label>
-                   <input type="number" className="input-field" value={transForm.passengerCount} onChange={e => setTransForm({...transForm, passengerCount: e.target.value})} />
+            // Filter State
+            const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
+            const [selectedVehicleFilter, setSelectedVehicleFilter] = useState('all');
+
+            // --- EFFECTS ---
+            useEffect(() => {
+                seedData();
+                const storedUser = localStorage.getItem('travel_currentUser');
+                if (storedUser) setUser(JSON.parse(storedUser));
+                setUsers(JSON.parse(localStorage.getItem('travel_users') || '[]'));
+                setVehicles(JSON.parse(localStorage.getItem('travel_vehicles') || '[]'));
+                setTransactions(JSON.parse(localStorage.getItem('travel_transactions') || '[]'));
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('travel_vehicles', JSON.stringify(vehicles));
+                localStorage.setItem('travel_users', JSON.stringify(users));
+                localStorage.setItem('travel_transactions', JSON.stringify(transactions));
+            }, [vehicles, users, transactions]);
+
+            // --- ACTIONS ---
+            useEffect(() => {
+                if (transForm.type === 'income_driver') {
+                    const grossIncome = transForm.incomeItems.reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+                    const totalCommission = transForm.incomeItems.reduce((acc, item) => acc + (parseFloat(item.commission) || 0), 0);
+                    const tripCosts = parseFloat(transForm.costBBM || 0) + parseFloat(transForm.costTol || 0) + parseFloat(transForm.costDriver || 0);
+                    const net = grossIncome - totalCommission - tripCosts;
+                    setTransForm(prev => ({ ...prev, amount: net }));
+                }
+            }, [transForm.incomeItems, transForm.costBBM, transForm.costTol, transForm.costDriver, transForm.type]);
+
+            const addIncomeItem = () => {
+                setTransForm(prev => ({
+                    ...prev,
+                    incomeItems: [...prev.incomeItems, { id: generateId(), type: 'Penumpang', desc: '', supplier: '', price: 0, commission: 0 }]
+                }));
+            };
+
+            const removeIncomeItem = (id) => {
+                setTransForm(prev => ({ ...prev, incomeItems: prev.incomeItems.filter(item => item.id !== id) }));
+            };
+
+            const updateIncomeItem = (id, field, value) => {
+                setTransForm(prev => ({
+                    ...prev,
+                    incomeItems: prev.incomeItems.map(item => item.id === id ? { ...item, [field]: value } : item)
+                }));
+            };
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const foundUser = users.find(u => u.username === authForm.username && u.password === authForm.password && u.active);
+                if (foundUser) {
+                    setUser(foundUser);
+                    localStorage.setItem('travel_currentUser', JSON.stringify(foundUser));
+                    setAuthError('');
+                    setView('dashboard');
+                } else {
+                    setAuthError('Username atau password salah / akun nonaktif');
+                }
+            };
+
+            const handleRegister = (e) => {
+                e.preventDefault();
+                if (users.find(u => u.username === authForm.username)) {
+                    setAuthError('Username sudah digunakan!');
+                    return;
+                }
+                const newUser = { id: generateId(), name: authForm.name, username: authForm.username, password: authForm.password, role: 'staff', active: true };
+                setUsers([...users, newUser]);
+                setAuthSuccess('Registrasi berhasil! Silakan login.');
+                setIsRegistering(false);
+                setAuthForm({ name: '', username: '', password: '' });
+                setAuthError('');
+            };
+
+            const handleLogout = () => {
+                setUser(null);
+                localStorage.removeItem('travel_currentUser');
+                setAuthForm({ name: '', username: '', password: '' });
+            };
+
+            const saveVehicle = (e) => {
+                e.preventDefault();
+                if (vehicleForm.id) {
+                    setVehicles(vehicles.map(v => v.id === vehicleForm.id ? vehicleForm : v));
+                } else {
+                    setVehicles([...vehicles, { ...vehicleForm, id: generateId() }]);
+                }
+                setShowVehicleModal(false);
+            };
+
+            const saveTransaction = (e) => {
+                e.preventDefault();
+                let desc = transForm.description;
+                if (transForm.type === 'income_driver') {
+                    const pnpCount = transForm.incomeItems.filter(i => i.type === 'Penumpang').length;
+                    const pktCount = transForm.incomeItems.filter(i => i.type === 'Paket').length;
+                    desc = `Trip: ${transForm.origin} - ${transForm.destination} (${pnpCount} Pnp, ${pktCount} Pkt)`;
+                } else if (transForm.type === 'salary' && !desc) {
+                    desc = `Gaji ${transForm.salaryRecipient}`;
+                } else if (transForm.type === 'income_ticket') {
+                    desc = `Tiket: ${transForm.route}`;
+                }
+                const newTrans = {
+                    ...transForm,
+                    description: desc,
+                    id: generateId(),
+                    amount: parseFloat(transForm.amount),
+                    costBBM: parseFloat(transForm.costBBM || 0),
+                    costTol: parseFloat(transForm.costTol || 0),
+                    costDriver: parseFloat(transForm.costDriver || 0),
+                    timestamp: new Date().toISOString()
+                };
+                setTransactions([newTrans, ...transactions]);
+                setShowTransModal(false);
+                setTransForm({
+                    type: 'income_driver', date: getTodayDate(), amount: 0, vehicleId: '', description: '',
+                    driverName: '', origin: '', destination: '',
+                    incomeItems: [],
+                    costBBM: 0, costTol: 0, costDriver: 0,
+                    paymentMethod: 'Cash', expenseType: 'BBM', salaryRecipient: '', route: ''
+                });
+            };
+
+            const deleteTransaction = (id) => {
+                if(confirm('Hapus transaksi ini?')) {
+                    setTransactions(transactions.filter(t => t.id !== id));
+                }
+            }
+
+            const deleteUser = (id) => {
+                if (id === user.id) {
+                    alert("Anda tidak dapat menghapus akun Anda sendiri saat sedang login.");
+                    return;
+                }
+                if (confirm('Apakah Anda yakin ingin menghapus akun pegawai ini secara permanen?')) {
+                    setUsers(users.filter(u => u.id !== id));
+                }
+            };
+
+            const filteredTransactions = useMemo(() => {
+                return transactions.filter(t => {
+                    const dateMatch = (!dateFilter.start || t.date >= dateFilter.start) && (!dateFilter.end || t.date <= dateFilter.end);
+                    const vehicleMatch = selectedVehicleFilter === 'all' || t.vehicleId === selectedVehicleFilter;
+                    return dateMatch && vehicleMatch;
+                });
+            }, [transactions, dateFilter, selectedVehicleFilter]);
+
+            const stats = useMemo(() => {
+                let incomeDriver = 0, incomeTicket = 0, totalExpense = 0;
+                filteredTransactions.forEach(t => {
+                    if (t.type === 'income_driver') incomeDriver += t.amount;
+                    if (t.type === 'income_ticket') incomeTicket += t.amount;
+                    if (t.type === 'expense' || t.type === 'salary') totalExpense += t.amount;
+                });
+                return { incomeDriver, incomeTicket, totalIncome: incomeDriver + incomeTicket, totalExpense, netProfit: (incomeDriver + incomeTicket) - totalExpense };
+            }, [filteredTransactions]);
+
+            const chartData = useMemo(() => {
+                const dataMap = {};
+                filteredTransactions.forEach(t => {
+                    if (!dataMap[t.date]) dataMap[t.date] = { date: t.date, income: 0, expense: 0 };
+                    if (t.type.includes('income')) dataMap[t.date].income += t.amount;
+                    if (t.type === 'expense' || t.type === 'salary') dataMap[t.date].expense += t.amount;
+                });
+                return Object.values(dataMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+            }, [filteredTransactions]);
+
+            if (!user) {
+                return (
+                    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+                        <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
+                            <div className="flex justify-center mb-6">
+                                <div className="bg-blue-600 p-3 rounded-xl"><Bus className="w-8 h-8 text-white" /></div>
+                            </div>
+                            <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">{isRegistering ? 'Daftar Pegawai Baru' : 'LadiesTravel Login'}</h2>
+                            <p className="text-center text-slate-500 mb-6">{isRegistering ? 'Buat akun untuk akses sistem tiket' : 'Masuk untuk mengelola armada'}</p>
+                            {authSuccess && <div className="bg-green-100 text-green-700 p-3 rounded-lg mb-4 text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4" /> {authSuccess}</div>}
+                            <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
+                                {isRegistering && <div><label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label><input type="text" required className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nama Pegawai" value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} /></div>}
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Username</label><input type="text" required className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Username" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} /></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">Password</label><input type="password" required className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} /></div>
+                                {authError && <p className="text-red-500 text-sm text-center">{authError}</p>}
+                                <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">{isRegistering ? 'Daftar Sekarang' : 'Masuk'}</button>
+                            </form>
+                            <div className="mt-6 text-center pt-4 border-t"><button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); setAuthSuccess(''); }} className="text-sm text-blue-600 hover:underline font-medium">{isRegistering ? 'Sudah punya akun? Login' : 'Pegawai baru? Daftar Akun'}</button></div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
+                    <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0 z-30">
+                        <div className="p-6 flex items-center gap-3 border-b border-slate-700">
+                            <div className="bg-blue-500 p-2 rounded-lg"><Bus className="w-5 h-5 text-white" /></div>
+                            <span className="font-bold text-xl tracking-tight">LadiesTravel</span>
+                        </div>
+                        <nav className="p-4 space-y-2">
+                            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'dashboard' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> <span>Dashboard</span></button>
+                            <button onClick={() => { setView('finance'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'finance' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Wallet className="w-5 h-5" /> <span>Keuangan (Kas)</span></button>
+                            {user.role === 'admin' && (
+                                <>
+                                    <button onClick={() => setView('vehicles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'vehicles' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Bus className="w-5 h-5" /> <span>Armada Kendaraan</span></button>
+                                    <button onClick={() => setView('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'reports' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><FileText className="w-5 h-5" /> <span>Analisa Laba Per Trip</span></button>
+                                    <button onClick={() => setView('staff')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'staff' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Users className="w-5 h-5" /> <span>Pegawai</span></button>
+                                </>
+                            )}
+                        </nav>
+                        <div className="absolute bottom-0 w-full md:w-64 p-4 border-t border-slate-700 bg-slate-900">
+                            <div className="flex items-center gap-3 mb-4 px-2">
+                                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center"><UserCircle className="w-5 h-5 text-slate-300" /></div>
+                                <div><p className="text-sm font-medium">{user.name}</p><p className="text-xs text-slate-400 capitalize">{user.role}</p></div>
+                            </div>
+                            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:bg-slate-800 py-2 rounded-lg transition text-sm"><LogOut className="w-4 h-4" /> Keluar</button>
+                        </div>
+                    </aside>
+                    <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8">
+                        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-800 capitalize">{view === 'finance' ? 'Keuangan (Buku Kas)' : view === 'reports' ? 'Analisa Laba Per Trip' : view.replace('_', ' ')}</h1>
+                                <p className="text-slate-500 text-sm">Selamat datang kembali, {user.name}</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => { setTransForm({ type: user.role === 'admin' ? 'income_driver' : 'income_ticket', date: getTodayDate(), amount: 0, vehicleId: '', description: '', driverName: '', origin: '', destination: '', incomeItems: [], costBBM: 0, costTol: 0, costDriver: 0, paymentMethod: 'Cash', expenseType: 'BBM', salaryRecipient: '' }); setShowTransModal(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition"><Plus className="w-5 h-5" /><span>Input Transaksi</span></button>
+                            </div>
+                        </header>
+                        {view === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <Card title="Pemasukan Trip (Net)" value={formatCurrency(stats.incomeDriver)} subtext="Setelah dipotong biaya" icon={Bus} colorClass="text-green-600" />
+                                    <Card title="Penjualan Tiket" value={formatCurrency(stats.incomeTicket)} subtext="Total periode ini" icon={Receipt} colorClass="text-blue-600" />
+                                    {user.role === 'admin' && (
+                                        <>
+                                            <Card title="Pengeluaran Kantor" value={formatCurrency(stats.totalExpense)} subtext="Ops, Servis & Gaji" icon={TrendingDown} colorClass="text-red-500" />
+                                            <Card title="Laba Bersih" value={formatCurrency(stats.netProfit)} subtext="Total Keuntungan" icon={Wallet} colorClass={stats.netProfit >= 0 ? "text-emerald-600" : "text-red-600"} />
+                                        </>
+                                    )}
+                                </div>
+                                {user.role === 'admin' && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                            <h3 className="font-bold text-lg mb-4 text-slate-700">Tren Pemasukan vs Pengeluaran</h3>
+                                            <div className="h-72">
+                                                <ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData}><defs><linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient><linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" /><XAxis dataKey="date" tickFormatter={d => new Date(d).getDate()} stroke="#94a3b8" fontSize={12} /><YAxis stroke="#94a3b8" fontSize={12} tickFormatter={val => `${val/1000}k`} /><RechartsTooltip formatter={(value) => formatCurrency(value)} /><Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#colorInc)" name="Pemasukan" strokeWidth={2} /><Area type="monotone" dataKey="expense" stroke="#ef4444" fillOpacity={1} fill="url(#colorExp)" name="Pengeluaran" strokeWidth={2} /></AreaChart></ResponsiveContainer>
+                                            </div>
+                                        </div>
+                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                            <h3 className="font-bold text-lg mb-4 text-slate-700">Aktivitas Terkini</h3>
+                                            <div className="space-y-4 max-h-72 overflow-y-auto pr-2">
+                                                {transactions.slice(0, 6).map((t, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-lg transition border-b border-slate-50 last:border-0">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`p-2 rounded-full ${t.type === 'expense' || t.type === 'salary' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{t.type === 'expense' || t.type === 'salary' ? <TrendingDown size={16}/> : <TrendingUp size={16}/>}</div>
+                                                            <div><p className="text-sm font-bold text-slate-700">{t.type === 'salary' ? 'Gaji' : (t.type === 'expense' ? t.expenseType : (t.type === 'income_driver' ? 'Setoran Trip' : 'Tiket'))}</p><p className="text-xs text-slate-400">{formatDate(t.date)}</p></div>
+                                                        </div>
+                                                        <span className={`text-sm font-bold ${t.type === 'expense' || t.type === 'salary' ? 'text-red-600' : 'text-green-600'}`}>{t.type === 'expense' || t.type === 'salary' ? '-' : '+'}{formatCurrency(t.amount)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {view === 'finance' && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="p-6 border-b flex justify-between items-center"><div><h3 className="font-bold text-lg">Buku Besar (Net Cashflow)</h3><p className="text-sm text-slate-500">Mencatat uang masuk bersih dan uang keluar kantor.</p></div></div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-slate-600">
+                                        <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs"><tr><th className="p-4">Tanggal</th><th className="p-4">Kategori</th><th className="p-4">Keterangan</th><th className="p-4 text-right">Nominal (Net)</th>{user.role === 'admin' && <th className="p-4 text-center">Aksi</th>}</tr></thead>
+                                        <tbody className="divide-y divide-slate-100">{filteredTransactions.map(t => (<tr key={t.id} className="hover:bg-slate-50"><td className="p-4">{formatDate(t.date)}</td><td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${t.type.includes('income') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.type === 'income_driver' ? 'Setoran Perjalanan' : t.type === 'income_ticket' ? 'Penjualan Tiket' : 'Pengeluaran'}</span></td><td className="p-4">{t.description}</td><td className={`p-4 text-right font-bold ${t.type.includes('income') ? 'text-green-600' : 'text-red-600'}`}>{t.type.includes('income') ? '+' : '-'}{formatCurrency(t.amount)}</td>{user.role === 'admin' && (<td className="p-4 text-center"><button onClick={() => deleteTransaction(t.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button></td>)}</tr>))}</tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'reports' && user.role === 'admin' && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50">
+                                    <div className="flex items-center gap-4"><div><h3 className="font-bold text-lg">Analisa Laba Per Trip</h3><p className="text-xs text-slate-500">Omset Kotor - (Total Komisi + BBM + Tol + Supir) = Laba Bersih</p></div><select className="border p-2 rounded text-sm bg-white" value={selectedVehicleFilter} onChange={(e) => setSelectedVehicleFilter(e.target.value)}><option value="all">Semua Kendaraan</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}</select></div>
+                                    <button onClick={() => window.print()} className="px-4 py-2 text-slate-600 border bg-white rounded-lg hover:bg-slate-100 text-sm flex items-center gap-2"><Printer className="w-4 h-4"/> Cetak Laporan</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs text-slate-600">
+                                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase"><tr><th className="p-3">Tanggal</th><th className="p-3">Rute / Kendaraan</th><th className="p-3">Pemasok</th><th className="p-3 text-right text-blue-700 bg-blue-50">Omset Kotor</th><th className="p-3 text-right text-red-500">Tot Komisi</th><th className="p-3 text-right text-red-500">BBM</th><th className="p-3 text-right text-red-500">Tol</th><th className="p-3 text-right text-red-500">Supir</th><th className="p-3 text-right font-bold text-green-700 bg-green-100">Laba Bersih</th></tr></thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {filteredTransactions.filter(t => t.type === 'income_driver').map(t => {
+                                                const v = vehicles.find(vh => vh.id === t.vehicleId);
+                                                const itemsIncome = t.incomeItems?.reduce((sum, item) => sum + (parseFloat(item.price)||0), 0) || 0;
+                                                const itemsCommission = t.incomeItems?.reduce((sum, item) => sum + (parseFloat(item.commission)||0), 0) || 0;
+                                                const gross = t.incomeItems ? itemsIncome : (t.amount + (t.costBBM||0) + (t.costTol||0) + (t.costDriver||0) + (t.commission||0));
+                                                const totalComm = t.incomeItems ? itemsCommission : (t.commission || 0);
+                                                const uniqueSuppliers = t.incomeItems ? [...new Set(t.incomeItems.map(i => i.supplier).filter(Boolean))] : (t.supplier ? [t.supplier] : []);
+                                                const supplierDisplay = uniqueSuppliers.length > 0 ? uniqueSuppliers.join(', ') : 'Umum';
+                                                return (<tr key={t.id} className="hover:bg-slate-50"><td className="p-3">{formatDate(t.date)}</td><td className="p-3"><div className="font-bold text-slate-800">{t.origin} ➝ {t.destination}</div><div className="text-[10px] text-slate-500">{v?.plate} • {t.driverName}</div></td><td className="p-3 truncate max-w-[150px]" title={supplierDisplay}>{supplierDisplay}</td><td className="p-3 text-right font-medium text-blue-700 bg-blue-50">{formatCurrency(gross)}</td><td className="p-3 text-right text-slate-500">{formatCurrency(totalComm)}</td><td className="p-3 text-right text-slate-500">{formatCurrency(t.costBBM)}</td><td className="p-3 text-right text-slate-500">{formatCurrency(t.costTol)}</td><td className="p-3 text-right text-slate-500">{formatCurrency(t.costDriver)}</td><td className="p-3 text-right font-bold text-green-700 bg-green-100">{formatCurrency(t.amount)}</td></tr>);
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'vehicles' && user.role === 'admin' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <button onClick={() => { setVehicleForm({ status: 'Aktif' }); setShowVehicleModal(true); }} className="bg-white border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 hover:border-blue-500 hover:text-blue-500 transition min-h-[200px]"><Plus className="w-10 h-10 mb-2" /> <span className="font-bold">Tambah Kendaraan</span></button>
+                                {vehicles.map(v => {
+                                    const vTrans = transactions.filter(t => t.vehicleId === v.id);
+                                    const vIncome = vTrans.filter(t => t.type !== 'expense').reduce((acc, c) => acc + c.amount, 0);
+                                    const vExpense = vTrans.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
+                                    return (<div key={v.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition"><div className="p-5 border-b flex justify-between items-start"><div><h3 className="font-bold text-lg text-slate-800">{v.plate}</h3><p className="text-slate-500 text-sm">{v.name}</p></div><span className={`px-2 py-1 rounded text-xs font-bold ${v.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{v.status}</span></div><div className="p-5 grid grid-cols-2 gap-4 text-sm"><div><p className="text-slate-400 text-xs">Pemasukan Bersih</p><p className="font-bold text-green-600">{formatCurrency(vIncome)}</p></div><div><p className="text-slate-400 text-xs">Biaya Servis/Lain</p><p className="font-bold text-red-600">{formatCurrency(vExpense)}</p></div></div></div>);
+                                })}
+                            </div>
+                        )}
+
+                        {view === 'staff' && user.role === 'admin' && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="p-6 border-b"> <h3 className="font-bold text-lg">Daftar Pegawai Tiket</h3> </div>
+                                <table className="w-full text-left text-sm text-slate-600">
+                                    <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs"><tr> <th className="p-4">Nama</th> <th className="p-4">Username</th> <th className="p-4">Role</th> <th className="p-4 text-right">Status</th> <th className="p-4 text-center">Aksi</th> </tr></thead>
+                                    <tbody>
+                                        {users.map(u => (<tr key={u.id} className="border-b last:border-0 hover:bg-slate-50"><td className="p-4 font-bold">{u.name}</td><td className="p-4 text-slate-500">{u.username}</td><td className="p-4 capitalize">{u.role}</td><td className="p-4 text-right"> <span className={`px-2 py-1 rounded text-xs font-bold ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}> {u.active ? 'Aktif' : 'Non-Aktif'} </span> </td><td className="p-4 text-center"> {u.id !== user.id && ( <button onClick={() => deleteUser(u.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition" title="Hapus Akun"> <Trash2 className="w-4 h-4" /> </button> )} </td></tr>))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </main>
+
+                    <Modal isOpen={showVehicleModal} onClose={() => setShowVehicleModal(false)} title={vehicleForm.id ? "Edit Kendaraan" : "Tambah Kendaraan"}>
+                        <form onSubmit={saveVehicle} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4"><div> <label className="label-text">Nomor Polisi</label> <input required className="input-field" value={vehicleForm.plate || ''} onChange={e => setVehicleForm({...vehicleForm, plate: e.target.value})} /> </div><div> <label className="label-text">Tahun</label> <input type="number" className="input-field" value={vehicleForm.year || ''} onChange={e => setVehicleForm({...vehicleForm, year: e.target.value})} /> </div></div>
+                            <div> <label className="label-text">Nama / Unit</label> <input required className="input-field" placeholder="Misal: HiAce 01" value={vehicleForm.name || ''} onChange={e => setVehicleForm({...vehicleForm, name: e.target.value})} /> </div>
+                            <div> <label className="label-text">Tipe Kendaraan</label> <input className="input-field" placeholder="Minibus / Elf" value={vehicleForm.type || ''} onChange={e => setVehicleForm({...vehicleForm, type: e.target.value})} /> </div>
+                            <div> <label className="label-text">Status</label> <select className="input-field" value={vehicleForm.status || 'Aktif'} onChange={e => setVehicleForm({...vehicleForm, status: e.target.value})}> <option value="Aktif">Aktif</option> <option value="Servis">Servis</option> <option value="Rusak">Rusak</option> </select> </div>
+                            <button type="submit" className="btn-primary w-full">Simpan Kendaraan</button>
+                        </form>
+                    </Modal>
+
+                    <Modal isOpen={showTransModal} onClose={() => setShowTransModal(false)} title="Input Data Baru" maxWidth="max-w-5xl">
+                        <form onSubmit={saveTransaction} className="space-y-6">
+                            <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 overflow-x-auto no-scrollbar">
+                                {user.role === 'admin' && (
+                                    <>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'income_driver', amount: 0, incomeItems: []})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_driver' ? 'bg-white shadow-sm ring-1 ring-black/5 text-blue-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Bus className="w-4 h-4"/> Setoran</button>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'expense', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'expense' ? 'bg-white shadow-sm ring-1 ring-black/5 text-red-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><CreditCard className="w-4 h-4"/> Pengeluaran</button>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'salary', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'salary' ? 'bg-white shadow-sm ring-1 ring-black/5 text-orange-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><User className="w-4 h-4"/> Gaji</button>
+                                    </>
+                                )}
+                                <button type="button" onClick={() => setTransForm({...transForm, type: 'income_ticket', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_ticket' ? 'bg-white shadow-sm ring-1 ring-black/5 text-emerald-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Receipt className="w-4 h-4"/> Tiket</button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-1"> <label className="label-text flex items-center gap-2"><Calendar className="w-3 h-3"/> Tanggal Transaksi</label> <input required type="date" className="outline-none bg-transparent w-full text-slate-700 font-medium" value={transForm.date} onChange={e => setTransForm({...transForm, date: e.target.value})} /> </div>
+                                {(transForm.type === 'income_driver' || transForm.type === 'expense') && (<div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-1"> <label className="label-text flex items-center gap-2"><Bus className="w-3 h-3"/> Pilih Kendaraan</label> <select required className="outline-none bg-transparent w-full text-slate-700 font-medium" value={transForm.vehicleId} onChange={e => setTransForm({...transForm, vehicleId: e.target.value})}> <option value="">-- Pilih Kendaraan --</option> {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.name}</option>)} </select> </div>)}
+                            </div>
+
+                            {transForm.type === 'income_driver' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                                    <div className="space-y-4">
+                                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                            <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide border-b pb-2"><MapPin className="w-4 h-4 text-blue-500"/> Data Perjalanan</h4>
+                                            <div className="space-y-4">
+                                                <div> <label className="label-text">Nama Supir</label> <div className="relative"><UserCircle className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input required className="input-field pl-10" placeholder="Nama Supir" value={transForm.driverName} onChange={e => setTransForm({...transForm, driverName: e.target.value})} /> </div></div>
+                                                <div className="grid grid-cols-2 gap-3"><div> <label className="label-text">Dari (Asal)</label> <input required className="input-field" placeholder="Kota Asal" value={transForm.origin} onChange={e => setTransForm({...transForm, origin: e.target.value})} /> </div><div> <label className="label-text">Ke (Tujuan)</label> <input required className="input-field" placeholder="Kota Tujuan" value={transForm.destination} onChange={e => setTransForm({...transForm, destination: e.target.value})} /> </div></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 shadow-sm">
+                                            <div className="flex justify-between items-center mb-4"><h4 className="font-bold text-blue-800 text-sm uppercase tracking-wide">Rincian Pendapatan</h4><button type="button" onClick={addIncomeItem} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-1 shadow-sm transition"><Plus className="w-3 h-3"/> Tambah</button></div>
+                                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                                                {transForm.incomeItems.length === 0 && (<div className="text-center py-6 border-2 border-dashed border-blue-200 rounded-xl bg-white/50"><Users className="w-8 h-8 text-blue-200 mx-auto mb-2" /><p className="text-xs text-blue-400 font-medium">Belum ada penumpang</p><p className="text-[10px] text-blue-300">Klik tombol tambah diatas</p></div>)}
+                                                {transForm.incomeItems.map((item, idx) => (
+                                                    <div key={item.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 relative group transition-all hover:shadow-md">
+                                                        <div className="grid grid-cols-12 gap-2 mb-2">
+                                                            <div className="col-span-3"><label className="text-[10px] font-bold text-slate-400 uppercase">Tipe</label><select className="text-xs border-0 bg-slate-50 rounded p-1.5 w-full font-medium text-slate-700" value={item.type} onChange={e => updateIncomeItem(item.id, 'type', e.target.value)}><option>Penumpang</option><option>Paket</option></select></div>
+                                                            <div className="col-span-5"><label className="text-[10px] font-bold text-slate-400 uppercase">Nama / Ket</label><input className="text-xs border-b border-slate-200 focus:border-blue-500 bg-transparent p-1.5 w-full outline-none" placeholder="Nama..." value={item.desc} onChange={e => updateIncomeItem(item.id, 'desc', e.target.value)} /></div>
+                                                            <div className="col-span-4"><label className="text-[10px] font-bold text-slate-400 uppercase text-right block">Harga</label><input type="number" className="text-xs border-b border-slate-200 focus:border-blue-500 bg-transparent p-1.5 w-full text-right font-bold text-slate-700 outline-none" placeholder="0" value={item.price} onChange={e => updateIncomeItem(item.id, 'price', e.target.value)} /></div>
+                                                        </div>
+                                                        <div className="grid grid-cols-12 gap-2">
+                                                            <div className="col-span-8"><div className="flex items-center gap-2 bg-slate-50 rounded px-2 py-1"><Users className="w-3 h-3 text-slate-400" /><input className="text-xs bg-transparent border-0 w-full outline-none text-slate-600 placeholder:text-slate-300" placeholder="Pemasok (Opsional)" value={item.supplier} onChange={e => updateIncomeItem(item.id, 'supplier', e.target.value)} /></div></div>
+                                                            <div className="col-span-4 flex items-center gap-2"><div className="flex items-center gap-1 bg-red-50 rounded px-2 py-1 flex-1"><span className="text-[10px] text-red-400 font-bold">-</span><input type="number" className="text-xs bg-transparent border-0 w-full outline-none text-red-600 text-right font-medium placeholder:text-red-200" placeholder="Komisi" value={item.commission} onChange={e => updateIncomeItem(item.id, 'commission', e.target.value)} /></div></div>
+                                                        </div>
+                                                        <button type="button" onClick={() => removeIncomeItem(item.id)} className="absolute -top-2 -right-2 bg-white text-slate-300 hover:text-red-500 hover:bg-red-50 p-1 rounded-full shadow border border-slate-100 opacity-0 group-hover:opacity-100 transition-all"><X className="w-3 h-3"/></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-4 pt-3 border-t border-blue-200 flex justify-between items-center"><span className="text-xs text-blue-600 font-medium">Total Kotor (Gross)</span><span className="font-bold text-blue-800 text-base">{formatCurrency(transForm.incomeItems.reduce((acc, i) => acc + (parseFloat(i.price)||0), 0))}</span></div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="bg-rose-50/50 p-5 rounded-xl border border-rose-100 shadow-sm">
+                                            <h4 className="font-bold text-rose-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide border-b border-rose-200 pb-2"><Fuel className="w-4 h-4"/> Pengeluaran Jalan</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div> <label className="label-text text-rose-700">BBM</label> <div className="relative"><span className="absolute left-3 top-2.5 text-xs font-bold text-rose-300">Rp</span><input type="number" className="input-field pl-8 border-rose-200 focus:border-rose-500 focus:ring-rose-500/10" placeholder="0" value={transForm.costBBM} onChange={e => setTransForm({...transForm, costBBM: e.target.value})} /> </div></div>
+                                                <div> <label className="label-text text-rose-700">Tol / Parkir</label> <div className="relative"><span className="absolute left-3 top-2.5 text-xs font-bold text-rose-300">Rp</span><input type="number" className="input-field pl-8 border-rose-200 focus:border-rose-500 focus:ring-rose-500/10" placeholder="0" value={transForm.costTol} onChange={e => setTransForm({...transForm, costTol: e.target.value})} /> </div></div>
+                                                <div className="col-span-2"> <label className="label-text text-rose-700">Uang Makan / Saku Supir</label> <div className="relative"><span className="absolute left-3 top-2.5 text-xs font-bold text-rose-300">Rp</span><input type="number" className="input-field pl-8 border-rose-200 focus:border-rose-500 focus:ring-rose-500/10" placeholder="0" value={transForm.costDriver} onChange={e => setTransForm({...transForm, costDriver: e.target.value})} /> </div></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet className="w-24 h-24" /></div>
+                                            <div className="relative z-10"><p className="text-slate-400 text-sm font-medium mb-1">Total Setoran Bersih</p><p className="text-xs text-slate-500 mb-4">(Kotor - Komisi - Biaya Jalan)</p><div className="text-4xl font-bold tracking-tight">{formatCurrency(transForm.amount)}</div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {transForm.type !== 'income_driver' && (
+                                <div className="space-y-4 max-w-xl mx-auto">
+                                    {transForm.type === 'income_ticket' && (<div className="grid grid-cols-2 gap-4"><div> <label className="label-text">Rute</label> <input required className="input-field" value={transForm.route} onChange={e => setTransForm({...transForm, route: e.target.value})} /> </div><div> <label className="label-text">Metode Bayar</label> <select className="input-field" value={transForm.paymentMethod} onChange={e => setTransForm({...transForm, paymentMethod: e.target.value})}> <option>Cash</option> <option>Transfer</option> <option>QRIS</option> </select> </div></div>)}
+                                    {transForm.type === 'expense' && (<div> <label className="label-text">Jenis Pengeluaran</label> <select className="input-field" value={transForm.expenseType} onChange={e => setTransForm({...transForm, expenseType: e.target.value})}> <option>BBM</option> <option>Tol</option> <option>Parkir</option> <option>Servis</option> <option>Sparepart</option> <option>Pajak/STNK</option> <option>Lainnya</option> </select> </div>)}
+                                    {transForm.type === 'salary' && (<div> <label className="label-text">Penerima Gaji</label> <input list="staff-list" required className="input-field" placeholder="Nama Pegawai/Supir" value={transForm.salaryRecipient} onChange={e => setTransForm({...transForm, salaryRecipient: e.target.value})} /> <datalist id="staff-list"> {users.map(u => <option key={u.id} value={u.name} />)} </datalist> </div>)}
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"> <label className="label-text mb-2">Total Nominal (Rp)</label> <input required type="number" className="input-field text-2xl font-bold text-slate-800 h-14" placeholder="0" value={transForm.amount} onChange={e => setTransForm({...transForm, amount: e.target.value})} /> </div>
+                                    <div> <label className="label-text">Keterangan</label> <textarea className="input-field" rows="3" value={transForm.description} onChange={e => setTransForm({...transForm, description: e.target.value})}></textarea> </div>
+                                </div>
+                            )}
+
+                            <div className="pt-4 border-t sticky bottom-0 bg-white/95 backdrop-blur py-4 -mb-2 z-20">
+                                <button type="submit" className={`w-full py-4 rounded-xl font-bold text-white text-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 ${transForm.type.includes('expense') || transForm.type === 'salary' ? 'bg-gradient-to-r from-red-600 to-red-700' : 'bg-gradient-to-r from-blue-600 to-blue-700'}`}> <CheckCircle className="w-6 h-6" /> Simpan Transaksi </button>
+                            </div>
+                        </form>
+                    </Modal>
                 </div>
-                <div>
-                  <label className="label-text">Rute</label>
-                  <input className="input-field" value={transForm.route} onChange={e => setTransForm({...transForm, route: e.target.value})} />
-                </div>
-              </div>
-            </>
-          )}
-
-          {transForm.type === 'income_ticket' && (
-             <div className="grid grid-cols-2 gap-4">
-               <div>
-                  <label className="label-text">Rute Perjalanan</label>
-                  <input required className="input-field" value={transForm.route} onChange={e => setTransForm({...transForm, route: e.target.value})} />
-               </div>
-               <div>
-                  <label className="label-text">Jml Tiket</label>
-                  <input type="number" required className="input-field" value={transForm.passengerCount} onChange={e => setTransForm({...transForm, passengerCount: e.target.value})} />
-               </div>
-               <div>
-                 <label className="label-text">Metode Bayar</label>
-                 <select className="input-field" value={transForm.paymentMethod} onChange={e => setTransForm({...transForm, paymentMethod: e.target.value})}>
-                   <option>Cash</option>
-                   <option>Transfer</option>
-                   <option>QRIS</option>
-                 </select>
-               </div>
-             </div>
-          )}
-
-          {transForm.type === 'expense' && (
-            <div>
-              <label className="label-text">Jenis Pengeluaran</label>
-              <select className="input-field" value={transForm.expenseType} onChange={e => setTransForm({...transForm, expenseType: e.target.value})}>
-                <option>BBM</option>
-                <option>Tol</option>
-                <option>Parkir</option>
-                <option>Servis</option>
-                <option>Sparepart</option>
-                <option>Pajak/STNK</option>
-                <option>Lainnya</option>
-              </select>
-            </div>
-          )}
-
-          {transForm.type === 'salary' && (
-            <div>
-              <label className="label-text">Penerima Gaji / Nama Pegawai</label>
-              <input 
-                list="staff-list" 
-                required 
-                className="input-field" 
-                placeholder="Ketik nama supir atau pilih pegawai..." 
-                value={transForm.salaryRecipient} 
-                onChange={e => setTransForm({...transForm, salaryRecipient: e.target.value})} 
-              />
-              <datalist id="staff-list">
-                {users.map(u => <option key={u.id} value={u.name} />)}
-              </datalist>
-              <p className="text-xs text-slate-400 mt-1">Bisa pilih dari daftar pegawai atau ketik manual untuk supir.</p>
-            </div>
-          )}
-
-          <div>
-            <label className="label-text">Total Nominal (Rp)</label>
-            <input required type="number" className="input-field text-lg font-bold text-slate-700" placeholder="0" value={transForm.amount} onChange={e => setTransForm({...transForm, amount: e.target.value})} />
-          </div>
-
-          <div>
-             <label className="label-text">Catatan / Keterangan</label>
-             <textarea className="input-field" rows="2" value={transForm.description} onChange={e => setTransForm({...transForm, description: e.target.value})}></textarea>
-          </div>
-
-          <button type="submit" className={`w-full py-3 rounded-lg font-bold text-white transition 
-            ${transForm.type === 'expense' || transForm.type === 'salary' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-            Simpan Data
-          </button>
-        </form>
-      </Modal>
-
-      {/* Styles Injection */}
-      <style>{`
-        .input-field {
-          width: 100%;
-          padding: 0.5rem 0.75rem;
-          border: 1px solid #e2e8f0;
-          border-radius: 0.5rem;
-          font-size: 0.875rem;
-          outline: none;
-          transition: border-color 0.2s;
+            );
         }
-        .input-field:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-        }
-        .label-text {
-          display: block;
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: #64748b;
-          margin-bottom: 0.25rem;
-        }
-        .btn-primary {
-          background-color: #2563eb;
-          color: white;
-          padding: 0.75rem;
-          border-radius: 0.5rem;
-          font-weight: 600;
-          transition: background-color 0.2s;
-        }
-        .btn-primary:hover {
-          background-color: #1d4ed8;
-        }
-      `}</style>
-    </div>
-  );
-}
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TravelApp />);
+    </script>
+</body>
+</html>
