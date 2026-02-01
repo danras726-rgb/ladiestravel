@@ -9,7 +9,7 @@
     <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     
-    <!-- Load Prop-types (Penting untuk mencegah error pada beberapa library UMD) -->
+    <!-- Load Prop-types -->
     <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
     
     <!-- Load Babel for JSX -->
@@ -18,7 +18,7 @@
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Load Recharts (Versi Stabil 2.12.7 - Versi terbaru sering bermasalah di UMD) -->
+    <!-- Load Recharts (Versi Stabil 2.12.7) -->
     <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
 
     <style>
@@ -28,6 +28,17 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* HIDE NUMBER INPUT SPINNERS (Tombol Atas Bawah) */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     </style>
 </head>
@@ -36,10 +47,9 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        // Pastikan Recharts terdefinisi sebelum destructuring
         const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, Legend, ResponsiveContainer, AreaChart, Area } = window.Recharts || {};
 
-        // --- ICONS (Inline SVG Components to replace Lucide imports) ---
+        // --- ICONS ---
         const IconBase = ({ d, ...props }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
                 {d}
@@ -61,6 +71,7 @@
         const Search = (p) => <IconBase {...p} d={<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>} />;
         const Trash2 = (p) => <IconBase {...p} d={<><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />;
         const Printer = (p) => <IconBase {...p} d={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></>} />;
+        const Download = (p) => <IconBase {...p} d={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>} />;
         const ChevronRight = (p) => <IconBase {...p} d={<><path d="m9 18 6-6-6-6" /></>} />;
         const UserCircle = (p) => <IconBase {...p} d={<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="10" r="3" /><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" /></>} />;
         const CheckCircle = (p) => <IconBase {...p} d={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>} />;
@@ -70,6 +81,8 @@
         const X = (p) => <IconBase {...p} d={<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>} />;
         const CreditCard = (p) => <IconBase {...p} d={<><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></>} />;
         const User = (p) => <IconBase {...p} d={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>} />;
+        const Wrench = (p) => <IconBase {...p} d={<><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></>} />;
+        const Menu = (p) => <IconBase {...p} d={<><line x1="3" x2="21" y1="12" y2="12" /><line x1="3" x2="21" y1="6" y2="6" /><line x1="3" x2="21" y1="18" y2="18" /></>} />;
 
         // --- UTILITIES ---
         const formatCurrency = (amount) => {
@@ -77,7 +90,7 @@
                 style: 'currency',
                 currency: 'IDR',
                 minimumFractionDigits: 0
-            }).format(amount);
+            }).format(amount || 0);
         };
 
         const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -151,6 +164,7 @@
             const [users, setUsers] = useState([]);
             const [vehicles, setVehicles] = useState([]);
             const [transactions, setTransactions] = useState([]);
+            const [showSidebar, setShowSidebar] = useState(false);
             
             // Login & Register State
             const [isRegistering, setIsRegistering] = useState(false);
@@ -164,19 +178,21 @@
             
             // Forms
             const [vehicleForm, setVehicleForm] = useState({});
+            
+            // FORM TRANSAKSI
             const [transForm, setTransForm] = useState({
                 type: 'income_driver', 
                 date: getTodayDate(),
-                amount: 0, 
+                amount: '', 
                 vehicleId: '',
                 description: '',
                 driverName: '',
                 origin: '',        
                 destination: '',   
                 incomeItems: [], 
-                costBBM: 0,
-                costTol: 0,
-                costDriver: 0,     
+                costBBM: '',
+                costTol: '',
+                costDriver: '',     
                 paymentMethod: 'Cash',
                 expenseType: 'BBM', 
                 salaryRecipient: '',
@@ -217,7 +233,7 @@
             const addIncomeItem = () => {
                 setTransForm(prev => ({
                     ...prev,
-                    incomeItems: [...prev.incomeItems, { id: generateId(), type: 'Penumpang', desc: '', supplier: '', price: 0, commission: 0 }]
+                    incomeItems: [...prev.incomeItems, { id: generateId(), type: 'Penumpang', desc: '', supplier: '', price: '', commission: '' }]
                 }));
             };
 
@@ -230,6 +246,80 @@
                     ...prev,
                     incomeItems: prev.incomeItems.map(item => item.id === id ? { ...item, [field]: value } : item)
                 }));
+            };
+
+            // --- EXPORT TO CSV FUNCTION ---
+            const downloadCSV = (data, filename) => {
+                // Convert array of arrays to CSV string
+                // Handle special characters like commas in strings by wrapping in quotes
+                const csvContent = data.map(row => 
+                    row.map(val => {
+                        if (val === null || val === undefined) return '';
+                        let str = val.toString();
+                        // Escape quotes and wrap in quotes if contains comma, quote or newline
+                        if (str.search(/("|,|\n)/g) >= 0) {
+                            str = `"${str.replace(/"/g, '""')}"`;
+                        }
+                        return str;
+                    }).join(",")
+                ).join("\n");
+
+                // Create blob with BOM for Excel UTF-8 compatibility
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const handleExportFinance = () => {
+                const headers = ["Tanggal", "Kategori", "Keterangan", "Nominal (Rp)", "Arus Kas"];
+                const rows = filteredTransactions.map(t => [
+                    formatDate(t.date),
+                    t.type === 'income_driver' ? 'Setoran Perjalanan' : t.type === 'income_ticket' ? 'Penjualan Tiket' : 'Pengeluaran',
+                    t.description,
+                    t.amount,
+                    t.type.includes('income') ? 'Masuk' : 'Keluar'
+                ]);
+                
+                downloadCSV([headers, ...rows], `Laporan_Keuangan_LadiesTravel_${getTodayDate()}.csv`);
+            };
+
+            const handleExportReports = () => {
+                const headers = ["Tanggal", "Rute", "Kendaraan", "Supir", "Pemasok", "Omset Kotor", "Total Komisi", "BBM", "Tol", "Uang Supir", "Laba Bersih"];
+                
+                // Filter only trip transactions
+                const rows = filteredTransactions
+                    .filter(t => t.type === 'income_driver')
+                    .map(t => {
+                        const v = vehicles.find(vh => vh.id === t.vehicleId);
+                        const itemsIncome = t.incomeItems?.reduce((sum, item) => sum + (parseFloat(item.price)||0), 0) || 0;
+                        const itemsCommission = t.incomeItems?.reduce((sum, item) => sum + (parseFloat(item.commission)||0), 0) || 0;
+                        const gross = t.incomeItems ? itemsIncome : (t.amount + (t.costBBM||0) + (t.costTol||0) + (t.costDriver||0) + (t.commission||0));
+                        const totalComm = t.incomeItems ? itemsCommission : (t.commission || 0);
+                        const uniqueSuppliers = t.incomeItems ? [...new Set(t.incomeItems.map(i => i.supplier).filter(Boolean))] : [];
+                        const supplierStr = uniqueSuppliers.join('; ');
+                        
+                        return [
+                            formatDate(t.date),
+                            `${t.origin} - ${t.destination}`,
+                            v ? v.plate : '-',
+                            t.driverName,
+                            supplierStr,
+                            gross,
+                            totalComm,
+                            t.costBBM || 0,
+                            t.costTol || 0,
+                            t.costDriver || 0,
+                            t.amount
+                        ];
+                    });
+
+                downloadCSV([headers, ...rows], `Analisa_Laba_Trip_${getTodayDate()}.csv`);
             };
 
             const handleLogin = (e) => {
@@ -275,6 +365,12 @@
                 setShowVehicleModal(false);
             };
 
+            const deleteVehicle = (id) => {
+                if (confirm('Apakah Anda yakin ingin menghapus kendaraan ini?')) {
+                    setVehicles(vehicles.filter(v => v.id !== id));
+                }
+            };
+
             const saveTransaction = (e) => {
                 e.preventDefault();
                 let desc = transForm.description;
@@ -291,7 +387,7 @@
                     ...transForm,
                     description: desc,
                     id: generateId(),
-                    amount: parseFloat(transForm.amount),
+                    amount: parseFloat(transForm.amount || 0),
                     costBBM: parseFloat(transForm.costBBM || 0),
                     costTol: parseFloat(transForm.costTol || 0),
                     costDriver: parseFloat(transForm.costDriver || 0),
@@ -300,10 +396,10 @@
                 setTransactions([newTrans, ...transactions]);
                 setShowTransModal(false);
                 setTransForm({
-                    type: 'income_driver', date: getTodayDate(), amount: 0, vehicleId: '', description: '',
+                    type: 'income_driver', date: getTodayDate(), amount: '', vehicleId: '', description: '',
                     driverName: '', origin: '', destination: '',
                     incomeItems: [],
-                    costBBM: 0, costTol: 0, costDriver: 0,
+                    costBBM: '', costTol: '', costDriver: '',
                     paymentMethod: 'Cash', expenseType: 'BBM', salaryRecipient: '', route: ''
                 });
             };
@@ -376,20 +472,33 @@
             }
 
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
-                    <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0 z-30">
-                        <div className="p-6 flex items-center gap-3 border-b border-slate-700">
-                            <div className="bg-blue-500 p-2 rounded-lg"><Bus className="w-5 h-5 text-white" /></div>
-                            <span className="font-bold text-xl tracking-tight">LadiesTravel</span>
+                <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative">
+                    
+                    {/* MOBILE/COLLAPSIBLE SIDEBAR OVERLAY */}
+                    {showSidebar && (
+                        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setShowSidebar(false)}></div>
+                    )}
+
+                    {/* SIDEBAR */}
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <div className="p-6 flex items-center justify-between border-b border-slate-700">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-500 p-2 rounded-lg"><Bus className="w-5 h-5 text-white" /></div>
+                                <span className="font-bold text-xl tracking-tight">LadiesTravel</span>
+                            </div>
+                            {/* Close button for mobile */}
+                            <button onClick={() => setShowSidebar(false)} className="md:hidden text-slate-400 hover:text-white">
+                                <X className="w-6 h-6" />
+                            </button>
                         </div>
                         <nav className="p-4 space-y-2">
-                            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'dashboard' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> <span>Dashboard</span></button>
-                            <button onClick={() => { setView('finance'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'finance' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Wallet className="w-5 h-5" /> <span>Keuangan (Kas)</span></button>
+                            <button onClick={() => { setView('dashboard'); setShowSidebar(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'dashboard' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> <span>Dashboard</span></button>
+                            <button onClick={() => { setView('finance'); setShowSidebar(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'finance' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Wallet className="w-5 h-5" /> <span>Keuangan (Kas)</span></button>
                             {user.role === 'admin' && (
                                 <>
-                                    <button onClick={() => setView('vehicles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'vehicles' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Bus className="w-5 h-5" /> <span>Armada Kendaraan</span></button>
-                                    <button onClick={() => setView('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'reports' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><FileText className="w-5 h-5" /> <span>Analisa Laba Per Trip</span></button>
-                                    <button onClick={() => setView('staff')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'staff' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Users className="w-5 h-5" /> <span>Pegawai</span></button>
+                                    <button onClick={() => { setView('vehicles'); setShowSidebar(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'vehicles' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Bus className="w-5 h-5" /> <span>Armada Kendaraan</span></button>
+                                    <button onClick={() => { setView('reports'); setShowSidebar(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'reports' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><FileText className="w-5 h-5" /> <span>Analisa Laba Per Trip</span></button>
+                                    <button onClick={() => { setView('staff'); setShowSidebar(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${view === 'staff' ? 'bg-blue-600' : 'hover:bg-slate-800'}`}><Users className="w-5 h-5" /> <span>Pegawai</span></button>
                                 </>
                             )}
                         </nav>
@@ -401,16 +510,27 @@
                             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-red-400 hover:bg-slate-800 py-2 rounded-lg transition text-sm"><LogOut className="w-4 h-4" /> Keluar</button>
                         </div>
                     </aside>
+
+                    {/* MAIN CONTENT */}
                     <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8">
                         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-800 capitalize">{view === 'finance' ? 'Keuangan (Buku Kas)' : view === 'reports' ? 'Analisa Laba Per Trip' : view.replace('_', ' ')}</h1>
-                                <p className="text-slate-500 text-sm">Selamat datang kembali, {user.name}</p>
+                            <div className="flex items-center gap-3">
+                                {/* Hamburger Button for Mobile */}
+                                <button onClick={() => setShowSidebar(true)} className="md:hidden p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">
+                                    <Menu className="w-6 h-6" />
+                                </button>
+                                
+                                <div>
+                                    <h1 className="text-2xl font-bold text-slate-800 capitalize">{view === 'finance' ? 'Keuangan (Buku Kas)' : view === 'reports' ? 'Analisa Laba Per Trip' : view.replace('_', ' ')}</h1>
+                                    <p className="text-slate-500 text-sm">Selamat datang kembali, {user.name}</p>
+                                </div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => { setTransForm({ type: user.role === 'admin' ? 'income_driver' : 'income_ticket', date: getTodayDate(), amount: 0, vehicleId: '', description: '', driverName: '', origin: '', destination: '', incomeItems: [], costBBM: 0, costTol: 0, costDriver: 0, paymentMethod: 'Cash', expenseType: 'BBM', salaryRecipient: '' }); setShowTransModal(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition"><Plus className="w-5 h-5" /><span>Input Transaksi</span></button>
+                                <button onClick={() => { setTransForm({ type: user.role === 'admin' ? 'income_driver' : 'income_ticket', date: getTodayDate(), amount: '', vehicleId: '', description: '', driverName: '', origin: '', destination: '', incomeItems: [], costBBM: '', costTol: '', costDriver: '', paymentMethod: 'Cash', expenseType: 'BBM', salaryRecipient: '' }); setShowTransModal(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition"><Plus className="w-5 h-5" /><span>Input Transaksi</span></button>
                             </div>
                         </header>
+                        
+                        {/* Content Views */}
                         {view === 'dashboard' && (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -452,7 +572,10 @@
 
                         {view === 'finance' && (
                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                                <div className="p-6 border-b flex justify-between items-center"><div><h3 className="font-bold text-lg">Buku Besar (Net Cashflow)</h3><p className="text-sm text-slate-500">Mencatat uang masuk bersih dan uang keluar kantor.</p></div></div>
+                                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                                    <div><h3 className="font-bold text-lg">Buku Besar (Net Cashflow)</h3><p className="text-sm text-slate-500">Mencatat uang masuk bersih dan uang keluar kantor.</p></div>
+                                    <button onClick={handleExportFinance} className="px-4 py-2 text-green-600 border border-green-200 bg-white rounded-lg hover:bg-green-50 text-sm flex items-center gap-2 transition shadow-sm"><Download className="w-4 h-4"/> Export Excel</button>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-sm text-slate-600">
                                         <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs"><tr><th className="p-4">Tanggal</th><th className="p-4">Kategori</th><th className="p-4">Keterangan</th><th className="p-4 text-right">Nominal (Net)</th>{user.role === 'admin' && <th className="p-4 text-center">Aksi</th>}</tr></thead>
@@ -466,7 +589,10 @@
                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                                 <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50">
                                     <div className="flex items-center gap-4"><div><h3 className="font-bold text-lg">Analisa Laba Per Trip</h3><p className="text-xs text-slate-500">Omset Kotor - (Total Komisi + BBM + Tol + Supir) = Laba Bersih</p></div><select className="border p-2 rounded text-sm bg-white" value={selectedVehicleFilter} onChange={(e) => setSelectedVehicleFilter(e.target.value)}><option value="all">Semua Kendaraan</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}</select></div>
-                                    <button onClick={() => window.print()} className="px-4 py-2 text-slate-600 border bg-white rounded-lg hover:bg-slate-100 text-sm flex items-center gap-2"><Printer className="w-4 h-4"/> Cetak Laporan</button>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleExportReports} className="px-4 py-2 text-green-600 border border-green-200 bg-white rounded-lg hover:bg-green-50 text-sm flex items-center gap-2 transition shadow-sm"><Download className="w-4 h-4"/> Export Excel</button>
+                                        <button onClick={() => window.print()} className="px-4 py-2 text-slate-600 border bg-white rounded-lg hover:bg-slate-100 text-sm flex items-center gap-2 transition shadow-sm"><Printer className="w-4 h-4"/> Cetak Laporan</button>
+                                    </div>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-xs text-slate-600">
@@ -495,7 +621,32 @@
                                     const vTrans = transactions.filter(t => t.vehicleId === v.id);
                                     const vIncome = vTrans.filter(t => t.type !== 'expense').reduce((acc, c) => acc + c.amount, 0);
                                     const vExpense = vTrans.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
-                                    return (<div key={v.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition"><div className="p-5 border-b flex justify-between items-start"><div><h3 className="font-bold text-lg text-slate-800">{v.plate}</h3><p className="text-slate-500 text-sm">{v.name}</p></div><span className={`px-2 py-1 rounded text-xs font-bold ${v.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{v.status}</span></div><div className="p-5 grid grid-cols-2 gap-4 text-sm"><div><p className="text-slate-400 text-xs">Pemasukan Bersih</p><p className="font-bold text-green-600">{formatCurrency(vIncome)}</p></div><div><p className="text-slate-400 text-xs">Biaya Servis/Lain</p><p className="font-bold text-red-600">{formatCurrency(vExpense)}</p></div></div></div>);
+                                    return (
+                                        <div key={v.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition">
+                                            <div className="p-5 border-b flex justify-between items-start">
+                                                <div><h3 className="font-bold text-lg text-slate-800">{v.plate}</h3><p className="text-slate-500 text-sm">{v.name}</p></div>
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${v.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{v.status}</span>
+                                            </div>
+                                            <div className="p-5 grid grid-cols-2 gap-4 text-sm">
+                                                <div><p className="text-slate-400 text-xs">Pemasukan Bersih</p><p className="font-bold text-green-600">{formatCurrency(vIncome)}</p></div>
+                                                <div><p className="text-slate-400 text-xs">Biaya Servis/Lain</p><p className="font-bold text-red-600">{formatCurrency(vExpense)}</p></div>
+                                            </div>
+                                            <div className="bg-slate-50 p-3 flex justify-end gap-2 border-t border-slate-100">
+                                                 <button 
+                                                   onClick={() => { setVehicleForm(v); setShowVehicleModal(true); }}
+                                                   className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 flex items-center gap-1"
+                                                 >
+                                                   <Wrench className="w-3 h-3" /> Edit
+                                                 </button>
+                                                 <button 
+                                                   onClick={() => deleteVehicle(v.id)}
+                                                   className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 flex items-center gap-1"
+                                                 >
+                                                   <Trash2 className="w-3 h-3" /> Hapus
+                                                 </button>
+                                            </div>
+                                        </div>
+                                    );
                                 })}
                             </div>
                         )}
@@ -525,15 +676,16 @@
 
                     <Modal isOpen={showTransModal} onClose={() => setShowTransModal(false)} title="Input Data Baru" maxWidth="max-w-5xl">
                         <form onSubmit={saveTransaction} className="space-y-6">
-                            <div className="bg-slate-100 p-1.5 rounded-xl flex gap-1 overflow-x-auto no-scrollbar">
+                            {/* Grid 4 kolom untuk tombol kategori transaksi */}
+                            <div className="bg-slate-100 p-1.5 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-1">
                                 {user.role === 'admin' && (
                                     <>
-                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'income_driver', amount: 0, incomeItems: []})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_driver' ? 'bg-white shadow-sm ring-1 ring-black/5 text-blue-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Bus className="w-4 h-4"/> Setoran</button>
-                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'expense', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'expense' ? 'bg-white shadow-sm ring-1 ring-black/5 text-red-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><CreditCard className="w-4 h-4"/> Pengeluaran</button>
-                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'salary', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'salary' ? 'bg-white shadow-sm ring-1 ring-black/5 text-orange-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><User className="w-4 h-4"/> Gaji</button>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'income_driver', amount: '', incomeItems: []})} className={`w-full text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_driver' ? 'bg-white shadow-sm ring-1 ring-black/5 text-blue-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Bus className="w-4 h-4"/> Setoran</button>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'expense', amount: ''})} className={`w-full text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'expense' ? 'bg-white shadow-sm ring-1 ring-black/5 text-red-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><CreditCard className="w-4 h-4"/> Pengeluaran</button>
+                                        <button type="button" onClick={() => setTransForm({...transForm, type: 'salary', amount: ''})} className={`w-full text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'salary' ? 'bg-white shadow-sm ring-1 ring-black/5 text-orange-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><User className="w-4 h-4"/> Gaji</button>
                                     </>
                                 )}
-                                <button type="button" onClick={() => setTransForm({...transForm, type: 'income_ticket', amount: 0})} className={`flex-1 min-w-[140px] text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_ticket' ? 'bg-white shadow-sm ring-1 ring-black/5 text-emerald-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Receipt className="w-4 h-4"/> Tiket</button>
+                                <button type="button" onClick={() => setTransForm({...transForm, type: 'income_ticket', amount: ''})} className={`w-full text-sm py-2.5 px-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 ${transForm.type === 'income_ticket' ? 'bg-white shadow-sm ring-1 ring-black/5 text-emerald-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}><Receipt className="w-4 h-4"/> Tiket</button>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -547,7 +699,13 @@
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                                             <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide border-b pb-2"><MapPin className="w-4 h-4 text-blue-500"/> Data Perjalanan</h4>
                                             <div className="space-y-4">
-                                                <div> <label className="label-text">Nama Supir</label> <div className="relative"><UserCircle className="w-4 h-4 absolute left-3 top-3 text-slate-400" /><input required className="input-field pl-10" placeholder="Nama Supir" value={transForm.driverName} onChange={e => setTransForm({...transForm, driverName: e.target.value})} /> </div></div>
+                                                <div> 
+                                                    <label className="label-text">Nama Supir</label> 
+                                                    <div className="relative">
+                                                        <UserCircle className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                                                        <input required className="input-field pl-10" placeholder="Nama Supir" value={transForm.driverName} onChange={e => setTransForm({...transForm, driverName: e.target.value})} /> 
+                                                    </div>
+                                                </div>
                                                 <div className="grid grid-cols-2 gap-3"><div> <label className="label-text">Dari (Asal)</label> <input required className="input-field" placeholder="Kota Asal" value={transForm.origin} onChange={e => setTransForm({...transForm, origin: e.target.value})} /> </div><div> <label className="label-text">Ke (Tujuan)</label> <input required className="input-field" placeholder="Kota Tujuan" value={transForm.destination} onChange={e => setTransForm({...transForm, destination: e.target.value})} /> </div></div>
                                             </div>
                                         </div>
@@ -584,7 +742,7 @@
                                         </div>
                                         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                                             <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet className="w-24 h-24" /></div>
-                                            <div className="relative z-10"><p className="text-slate-400 text-sm font-medium mb-1">Total Setoran Bersih</p><p className="text-xs text-slate-500 mb-4">(Kotor - Komisi - Biaya Jalan)</p><div className="text-4xl font-bold tracking-tight">{formatCurrency(transForm.amount)}</div></div>
+                                            <div className="relative z-10"><p className="text-slate-400 text-sm font-medium mb-1">Total Setoran Bersih</p><p className="text-xs text-slate-500 mb-4">(Kotor - Komisi - Biaya Jalan)</p><div className="text-4xl font-bold tracking-tight">{formatCurrency(transForm.amount || 0)}</div></div>
                                         </div>
                                     </div>
                                 </div>
